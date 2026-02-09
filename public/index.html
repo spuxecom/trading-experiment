@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Experiment: Wiebe vs Claude</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Satoshi:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <h1>Trading Experiment 🔴 LIVE</h1>
+                <div class="subtitle">Wiebe (Human) vs Claude (AI) • 90-Day Challenge</div>
+            </div>
+            <div class="header-right">
+                <div class="live-indicator">
+                    <span class="live-dot"></span>
+                    LIVE PRICES
+                </div>
+                <button class="date-range-btn">Feb 9 - May 9, 2026</button>
+                <div class="days-badge">Day 0 / 90</div>
+            </div>
+        </div>
+        
+        <div class="stats-row">
+            <div class="stat-card positive">
+                <div class="label">🧑 Wiebe Portfolio</div>
+                <div class="value" id="wiebe-value">Loading...</div>
+                <div class="subvalue" id="wiebe-return">Connecting to Supabase...</div>
+            </div>
+            
+            <div class="stat-card positive">
+                <div class="label">🤖 Claude Portfolio</div>
+                <div class="value" id="claude-value">Loading...</div>
+                <div class="subvalue" id="claude-return">Connecting to Supabase...</div>
+            </div>
+            
+            <div class="stat-card neutral">
+                <div class="label">⚡ Performance Gap</div>
+                <div class="value" id="gap-value">-</div>
+                <div class="subvalue" id="gap-leader">Calculating...</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="label">📊 Total Trades</div>
+                <div class="split-value">
+                    <span style="color: #f59e0b;" id="wiebe-trades">1</span>
+                    <span class="separator">|</span>
+                    <span style="color: #10b981;" id="claude-trades">0</span>
+                </div>
+                <div class="subvalue">Wiebe | Claude</div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h2>📈 Portfolio Performance</h2>
+            </div>
+            <div class="chart-container">
+                <canvas id="portfolioChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h2>💰 Current Positions</h2>
+            </div>
+            <div class="positions-grid">
+                <div>
+                    <h3 style="margin-bottom: 16px;">🧑 Wiebe</h3>
+                    <div id="wiebe-positions"></div>
+                </div>
+                <div>
+                    <h3 style="margin-bottom: 16px;">🤖 Claude</h3>
+                    <div id="claude-positions"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h2>📝 Trade Log</h2>
+            </div>
+            <div id="trade-log"></div>
+        </div>
+        
+        <div class="footer">
+            Last update: <span id="last-update">Connecting...</span> • 
+            Powered by Supabase + GitHub Pages
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
