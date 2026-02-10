@@ -1,177 +1,162 @@
-// Trading Experiment Dashboard - Supabase Live Version
-// Updated: Feb 10, 2026 with live Supabase integration
+// Trading Experiment Dashboard - Supabase Live Version (Fixed)
+// Updated: Feb 10, 2026 - Fixed CORS and library loading
 
-// SUPABASE CONFIG
 const SUPABASE_URL = 'https://yntahbkulwaqawvtdear.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InludGFoYmt1bHdhcWF3dnRkZWFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzkyMjM4ODUsImV4cCI6MjA1NDc5OTg4NX0.nMlUnKQGqzf8PmkVq_7U8A_E73-TcIbE8uNYxQ7UXMU';
 
 const START_VALUE = 62771.86;
 let portfolioChart = null;
-let supabase = null;
 
-// Initialize Supabase client
-async function initSupabase() {
-    try {
-        // Load Supabase library from CDN
-        if (typeof window.supabase === 'undefined') {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-            document.head.appendChild(script);
-            await new Promise(resolve => script.onload = resolve);
+// Fallback static data (works immediately)
+const fallbackData = {
+    prices: {
+        'AMD': 215.00,
+        'GOOGL': 192.50,
+        'AMZN': 226.80,
+        'PLTR': 89.45,
+        'BOTZ': 38.20,
+        'IWDA': 112.80,
+        'AIAI': 14.35
+    },
+    positions: {
+        wiebe: {
+            'AMD': 133, 'GOOGL': 35, 'AMZN': 25, 'PLTR': 15,
+            'BOTZ': 350, 'IWDA': 25, 'AIAI': 175, 'CASH': 10749.07
+        },
+        claude: {
+            'AMD': 183, 'GOOGL': 35, 'AMZN': 25, 'PLTR': 15,
+            'BOTZ': 350, 'IWDA': 25, 'AIAI': 175, 'CASH': 0
         }
-        
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.log('✅ Supabase connected');
-        return true;
-    } catch (error) {
-        console.error('❌ Supabase connection failed:', error);
-        return false;
-    }
-}
-
-// Fallback static prices (if Supabase fails)
-const fallbackPrices = {
-    'AMD': 215.00,
-    'GOOGL': 192.50,
-    'AMZN': 226.80,
-    'PLTR': 89.45,
-    'BOTZ': 38.20,
-    'IWDA': 112.80,
-    'AIAI': 14.35
+    },
+    trades: [{
+        trader: 'wiebe',
+        date: '2026-02-09',
+        time: '18:30:00',
+        action: 'SELL',
+        ticker: 'AMD',
+        quantity: 50,
+        price: 215.00,
+        commission: 0.93,
+        net_amount: 10749.07,
+        rationale: 'Limit order executed at $215. Derisking AMD from 52.5% → 39.4%. Built $10.7k cash buffer (14.8%).'
+    }]
 };
 
-// Get latest prices from database
+// Simple fetch-based Supabase calls (no library needed!)
+async function supabaseFetch(table, options = {}) {
+    try {
+        let url = `${SUPABASE_URL}/rest/v1/${table}`;
+        
+        // Add query parameters
+        if (options.select) {
+            url += `?select=${options.select}`;
+        }
+        if (options.order) {
+            const orderParam = options.order.ascending ? 'asc' : 'desc';
+            url += (url.includes('?') ? '&' : '?') + `order=${options.order.column}.${orderParam}`;
+        }
+        
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error(`Supabase fetch error (${table}):`, error);
+        return null;
+    }
+}
+
+// Get latest prices
 async function fetchLatestPrices() {
-    if (!supabase) {
-        console.warn('Using fallback prices');
-        return fallbackPrices;
+    console.log('📊 Fetching prices...');
+    
+    const data = await supabaseFetch('price_history', {
+        select: 'ticker,price,timestamp',
+        order: { column: 'timestamp', ascending: false }
+    });
+    
+    if (!data) {
+        console.warn('⚠️ Using fallback prices');
+        return fallbackData.prices;
     }
     
-    try {
-        const { data, error } = await supabase
-            .from('price_history')
-            .select('ticker, price, timestamp')
-            .order('timestamp', { ascending: false });
-        
-        if (error) throw error;
-        
-        // Get most recent price for each ticker
-        const prices = {};
-        const seen = new Set();
-        
-        data.forEach(row => {
-            if (!seen.has(row.ticker)) {
-                prices[row.ticker] = parseFloat(row.price);
-                seen.add(row.ticker);
-            }
-        });
-        
-        // Merge with fallback for any missing tickers
-        return { ...fallbackPrices, ...prices };
-    } catch (error) {
-        console.error('Error fetching prices:', error);
-        return fallbackPrices;
-    }
+    // Get most recent price for each ticker
+    const prices = {};
+    const seen = new Set();
+    
+    data.forEach(row => {
+        if (!seen.has(row.ticker)) {
+            prices[row.ticker] = parseFloat(row.price);
+            seen.add(row.ticker);
+        }
+    });
+    
+    console.log('✅ Prices loaded:', Object.keys(prices).length, 'tickers');
+    return { ...fallbackData.prices, ...prices };
 }
 
-// Get current positions from database
+// Get current positions
 async function fetchPositions() {
-    if (!supabase) {
-        // Return hardcoded positions as fallback
-        return {
-            wiebe: {
-                'AMD': 133, 'GOOGL': 35, 'AMZN': 25, 'PLTR': 15,
-                'BOTZ': 350, 'IWDA': 25, 'AIAI': 175, 'CASH': 10749.07
-            },
-            claude: {
-                'AMD': 183, 'GOOGL': 35, 'AMZN': 25, 'PLTR': 15,
-                'BOTZ': 350, 'IWDA': 25, 'AIAI': 175, 'CASH': 0
-            }
-        };
+    console.log('💼 Fetching positions...');
+    
+    const data = await supabaseFetch('positions', {
+        select: '*'
+    });
+    
+    if (!data) {
+        console.warn('⚠️ Using fallback positions');
+        return fallbackData.positions;
     }
     
-    try {
-        const { data, error } = await supabase
-            .from('positions')
-            .select('*');
-        
-        if (error) throw error;
-        
-        const positions = { wiebe: {}, claude: {} };
-        
-        data.forEach(row => {
-            positions[row.trader][row.ticker] = parseFloat(row.quantity);
-        });
-        
-        return positions;
-    } catch (error) {
-        console.error('Error fetching positions:', error);
-        return {
-            wiebe: {
-                'AMD': 133, 'GOOGL': 35, 'AMZN': 25, 'PLTR': 15,
-                'BOTZ': 350, 'IWDA': 25, 'AIAI': 175, 'CASH': 10749.07
-            },
-            claude: {
-                'AMD': 183, 'GOOGL': 35, 'AMZN': 25, 'PLTR': 15,
-                'BOTZ': 350, 'IWDA': 25, 'AIAI': 175, 'CASH': 0
-            }
-        };
-    }
+    const positions = { wiebe: {}, claude: {} };
+    
+    data.forEach(row => {
+        positions[row.trader][row.ticker] = parseFloat(row.quantity);
+    });
+    
+    console.log('✅ Positions loaded:', data.length, 'rows');
+    return positions;
 }
 
-// Get trades history from database
+// Get trades history
 async function fetchTrades() {
-    if (!supabase) {
-        return [{
-            trader: 'wiebe',
-            date: '2026-02-09',
-            time: '18:30:00',
-            action: 'SELL',
-            ticker: 'AMD',
-            quantity: 50,
-            price: 215.00,
-            commission: 0.93,
-            net_amount: 10749.07,
-            rationale: 'Limit order executed at $215. Derisking AMD from 52.5% → 39.4%. Built $10.7k cash buffer (14.8%).'
-        }];
+    console.log('📝 Fetching trades...');
+    
+    const data = await supabaseFetch('trades', {
+        select: '*',
+        order: { column: 'date', ascending: false }
+    });
+    
+    if (!data) {
+        console.warn('⚠️ Using fallback trades');
+        return fallbackData.trades;
     }
     
-    try {
-        const { data, error } = await supabase
-            .from('trades')
-            .select('*')
-            .order('date', { ascending: false })
-            .order('time', { ascending: false });
-        
-        if (error) throw error;
-        
-        return data.map(row => ({
-            trader: row.trader,
-            date: row.date,
-            time: row.time,
-            action: row.action,
-            ticker: row.ticker,
-            quantity: row.quantity,
-            price: parseFloat(row.price),
-            commission: parseFloat(row.commission),
-            net_amount: parseFloat(row.net_amount),
-            rationale: row.rationale
-        }));
-    } catch (error) {
-        console.error('Error fetching trades:', error);
-        return [{
-            trader: 'wiebe',
-            date: '2026-02-09',
-            time: '18:30:00',
-            action: 'SELL',
-            ticker: 'AMD',
-            quantity: 50,
-            price: 215.00,
-            commission: 0.93,
-            net_amount: 10749.07,
-            rationale: 'Limit order executed at $215. Derisking AMD from 52.5% → 39.4%. Built $10.7k cash buffer (14.8%).'
-        }];
-    }
+    console.log('✅ Trades loaded:', data.length, 'trades');
+    
+    return data.map(row => ({
+        trader: row.trader,
+        date: row.date,
+        time: row.time,
+        action: row.action,
+        ticker: row.ticker,
+        quantity: row.quantity,
+        price: parseFloat(row.price),
+        commission: parseFloat(row.commission),
+        net_amount: parseFloat(row.net_amount),
+        rationale: row.rationale
+    }));
 }
 
 // Load and display trades
@@ -367,10 +352,8 @@ function formatCurrency(value) {
 
 // Initialize app
 async function init() {
-    console.log('🚀 Initializing Trading Dashboard...');
-    
-    // Initialize Supabase
-    await initSupabase();
+    console.log('🚀 Trading Dashboard Starting...');
+    console.log('📡 Supabase URL:', SUPABASE_URL);
     
     // Load initial data
     await Promise.all([
@@ -381,10 +364,10 @@ async function init() {
     // Auto-refresh every 60 seconds
     setInterval(updateUI, 60000);
     
-    console.log('✅ Dashboard ready!');
+    console.log('✅ Dashboard Ready!');
 }
 
-// Start the app when DOM is ready
+// Start the app
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
