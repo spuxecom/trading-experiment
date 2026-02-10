@@ -1,117 +1,102 @@
-// Trading Experiment Dashboard - Main App Logic
-// Replace these with your actual Supabase credentials after setup
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
-
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Trading Experiment Dashboard - Static Data Version
+// Updated: Feb 10, 2026 with hardcoded prices
 
 const START_VALUE = 62771.86;
-let livePrices = {};
-let positions = { wiebe: {}, claude: {} };
+
+// Hardcoded live prices (Feb 10, 2026)
+const livePrices = {
+    'AMD': 215.00,
+    'GOOGL': 192.50,
+    'AMZN': 226.80,
+    'PLTR': 89.45,
+    'BOTZ': 38.20,
+    'IWDA': 112.80,
+    'AIAI': 14.35
+};
+
+// Current positions
+const positions = {
+    wiebe: {
+        'AMD': 133,
+        'GOOGL': 35,
+        'AMZN': 25,
+        'PLTR': 15,
+        'BOTZ': 350,
+        'IWDA': 25,
+        'AIAI': 175,
+        'CASH': 10749.07
+    },
+    claude: {
+        'AMD': 183,
+        'GOOGL': 35,
+        'AMZN': 25,
+        'PLTR': 15,
+        'BOTZ': 350,
+        'IWDA': 25,
+        'AIAI': 175,
+        'CASH': 0
+    }
+};
+
+// Trades history
+const trades = [
+    {
+        trader: 'wiebe',
+        date: '2026-02-09',
+        time: '18:30:00',
+        action: 'SELL',
+        ticker: 'AMD',
+        quantity: 50,
+        price: 215.00,
+        commission: 0.93,
+        net_amount: 10749.07,
+        rationale: 'Limit order executed at $215. Derisking AMD from 52.5% → 39.4%. Built $10.7k cash buffer (14.8%).'
+    }
+];
+
 let portfolioChart = null;
 
 // Initialize app
-async function init() {
-    await loadPositions();
-    await fetchLivePrices();
-    await loadTrades();
+function init() {
+    updateUI();
+    loadTrades();
+    document.getElementById('last-update').textContent = new Date().toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
+}
+
+// Load trades
+function loadTrades() {
+    const tradeLog = document.getElementById('trade-log');
+    tradeLog.innerHTML = '';
     
-    // Refresh prices every 60 seconds
-    setInterval(fetchLivePrices, 60000);
-}
-
-// Load current positions from Supabase
-async function loadPositions() {
-    try {
-        const { data, error } = await supabase
-            .from('positions')
-            .select('*');
-        
-        if (error) throw error;
-        
-        data.forEach(pos => {
-            positions[pos.trader][pos.ticker] = pos.quantity;
-        });
-        
-        console.log('Positions loaded:', positions);
-    } catch (error) {
-        console.error('Error loading positions:', error);
-    }
-}
-
-// Fetch live prices from Supabase Edge Function
-async function fetchLivePrices() {
-    try {
-        // Call Supabase Edge Function
-        const { data, error } = await supabase.functions.invoke('fetch-prices');
-        
-        if (error) throw error;
-        
-        livePrices = data.prices;
-        
-        // Save to price_history table
-        const priceRecords = Object.entries(livePrices).map(([ticker, price]) => ({
-            ticker,
-            price,
-            timestamp: new Date().toISOString()
-        }));
-        
-        await supabase.from('price_history').insert(priceRecords);
-        
-        updateUI();
-        document.getElementById('last-update').textContent = new Date().toLocaleTimeString('en-US', { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-        });
-    } catch (error) {
-        console.error('Error fetching prices:', error);
-        document.getElementById('last-update').textContent = 'Error loading prices';
-    }
-}
-
-// Load trades from database
-async function loadTrades() {
-    try {
-        const { data, error } = await supabase
-            .from('trades')
-            .select('*')
-            .order('date', { ascending: false })
-            .order('time', { ascending: false });
-        
-        if (error) throw error;
-        
-        const tradeLog = document.getElementById('trade-log');
-        tradeLog.innerHTML = '';
-        
-        data.forEach(trade => {
-            const div = document.createElement('div');
-            div.className = `trade-item ${trade.trader}`;
-            div.innerHTML = `
-                <div class="trade-header">
-                    <div class="trade-action">
-                        ${trade.trader === 'wiebe' ? '🧑' : '🤖'} ${trade.trader.charAt(0).toUpperCase() + trade.trader.slice(1)}: 
-                        ${trade.action} ${trade.quantity} ${trade.ticker} @ $${trade.price.toFixed(2)}
-                    </div>
-                    <div class="trade-time">${trade.date} ${trade.time || ''}</div>
+    trades.forEach(trade => {
+        const div = document.createElement('div');
+        div.className = `trade-item ${trade.trader}`;
+        div.innerHTML = `
+            <div class="trade-header">
+                <div class="trade-action">
+                    ${trade.trader === 'wiebe' ? '🧑' : '🤖'} ${trade.trader.charAt(0).toUpperCase() + trade.trader.slice(1)}: 
+                    ${trade.action} ${trade.quantity} ${trade.ticker} @ $${trade.price.toFixed(2)}
                 </div>
-                <div class="trade-details">
-                    Value: $${(trade.quantity * trade.price).toFixed(2)} | 
-                    Commission: $${trade.commission.toFixed(2)} | 
-                    Net: $${trade.net_amount.toFixed(2)}
-                </div>
-                ${trade.rationale ? `<div class="trade-rationale">${trade.rationale}</div>` : ''}
-            `;
-            tradeLog.appendChild(div);
-        });
-        
-        // Update trade counts
-        const wiebeCount = data.filter(t => t.trader === 'wiebe').length;
-        const claudeCount = data.filter(t => t.trader === 'claude').length;
-        document.getElementById('wiebe-trades').textContent = wiebeCount;
-        document.getElementById('claude-trades').textContent = claudeCount;
-    } catch (error) {
-        console.error('Error loading trades:', error);
-    }
+                <div class="trade-time">${trade.date} ${trade.time || ''}</div>
+            </div>
+            <div class="trade-details">
+                Value: $${(trade.quantity * trade.price).toFixed(2)} | 
+                Commission: $${trade.commission.toFixed(2)} | 
+                Net: $${trade.net_amount.toFixed(2)}
+            </div>
+            ${trade.rationale ? `<div class="trade-rationale">${trade.rationale}</div>` : ''}
+        `;
+        tradeLog.appendChild(div);
+    });
+    
+    // Update trade counts
+    const wiebeCount = trades.filter(t => t.trader === 'wiebe').length;
+    const claudeCount = trades.filter(t => t.trader === 'claude').length;
+    document.getElementById('wiebe-trades').textContent = wiebeCount;
+    document.getElementById('claude-trades').textContent = claudeCount;
 }
 
 // Update UI with latest data
@@ -161,7 +146,7 @@ function updateChart(wiebeValue, claudeValue) {
     portfolioChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: ['Start', 'Current'],
+            labels: ['Start (Feb 9)', 'Current (Feb 10)'],
             datasets: [
                 {
                     label: 'Wiebe',
