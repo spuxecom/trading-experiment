@@ -1,10 +1,36 @@
-// Trading Experiment Dashboard - Static Data Version
-// Updated: Feb 10, 2026 with hardcoded prices
+// Trading Experiment Dashboard - Supabase Live Version
+// Updated: Feb 10, 2026 with live Supabase integration
+
+// SUPABASE CONFIG
+const SUPABASE_URL = 'https://yntahbkulwaqawvtdear.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InludGFoYmt1bHdhcWF3dnRkZWFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzkyMjM4ODUsImV4cCI6MjA1NDc5OTg4NX0.nMlUnKQGqzf8PmkVq_7U8A_E73-TcIbE8uNYxQ7UXMU';
 
 const START_VALUE = 62771.86;
+let portfolioChart = null;
+let supabase = null;
 
-// Hardcoded live prices (Feb 10, 2026)
-const livePrices = {
+// Initialize Supabase client
+async function initSupabase() {
+    try {
+        // Load Supabase library from CDN
+        if (typeof window.supabase === 'undefined') {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+            document.head.appendChild(script);
+            await new Promise(resolve => script.onload = resolve);
+        }
+        
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        console.log('✅ Supabase connected');
+        return true;
+    } catch (error) {
+        console.error('❌ Supabase connection failed:', error);
+        return false;
+    }
+}
+
+// Fallback static prices (if Supabase fails)
+const fallbackPrices = {
     'AMD': 215.00,
     'GOOGL': 192.50,
     'AMZN': 226.80,
@@ -14,60 +40,143 @@ const livePrices = {
     'AIAI': 14.35
 };
 
-// Current positions
-const positions = {
-    wiebe: {
-        'AMD': 133,
-        'GOOGL': 35,
-        'AMZN': 25,
-        'PLTR': 15,
-        'BOTZ': 350,
-        'IWDA': 25,
-        'AIAI': 175,
-        'CASH': 10749.07
-    },
-    claude: {
-        'AMD': 183,
-        'GOOGL': 35,
-        'AMZN': 25,
-        'PLTR': 15,
-        'BOTZ': 350,
-        'IWDA': 25,
-        'AIAI': 175,
-        'CASH': 0
+// Get latest prices from database
+async function fetchLatestPrices() {
+    if (!supabase) {
+        console.warn('Using fallback prices');
+        return fallbackPrices;
     }
-};
-
-// Trades history
-const trades = [
-    {
-        trader: 'wiebe',
-        date: '2026-02-09',
-        time: '18:30:00',
-        action: 'SELL',
-        ticker: 'AMD',
-        quantity: 50,
-        price: 215.00,
-        commission: 0.93,
-        net_amount: 10749.07,
-        rationale: 'Limit order executed at $215. Derisking AMD from 52.5% → 39.4%. Built $10.7k cash buffer (14.8%).'
+    
+    try {
+        const { data, error } = await supabase
+            .from('price_history')
+            .select('ticker, price, timestamp')
+            .order('timestamp', { ascending: false });
+        
+        if (error) throw error;
+        
+        // Get most recent price for each ticker
+        const prices = {};
+        const seen = new Set();
+        
+        data.forEach(row => {
+            if (!seen.has(row.ticker)) {
+                prices[row.ticker] = parseFloat(row.price);
+                seen.add(row.ticker);
+            }
+        });
+        
+        // Merge with fallback for any missing tickers
+        return { ...fallbackPrices, ...prices };
+    } catch (error) {
+        console.error('Error fetching prices:', error);
+        return fallbackPrices;
     }
-];
-
-let portfolioChart = null;
-
-// Initialize app
-function init() {
-    updateUI();
-    loadTrades();
-    document.getElementById('last-update').textContent = new Date().toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
-    });
 }
 
-// Load trades
-function loadTrades() {
+// Get current positions from database
+async function fetchPositions() {
+    if (!supabase) {
+        // Return hardcoded positions as fallback
+        return {
+            wiebe: {
+                'AMD': 133, 'GOOGL': 35, 'AMZN': 25, 'PLTR': 15,
+                'BOTZ': 350, 'IWDA': 25, 'AIAI': 175, 'CASH': 10749.07
+            },
+            claude: {
+                'AMD': 183, 'GOOGL': 35, 'AMZN': 25, 'PLTR': 15,
+                'BOTZ': 350, 'IWDA': 25, 'AIAI': 175, 'CASH': 0
+            }
+        };
+    }
+    
+    try {
+        const { data, error } = await supabase
+            .from('positions')
+            .select('*');
+        
+        if (error) throw error;
+        
+        const positions = { wiebe: {}, claude: {} };
+        
+        data.forEach(row => {
+            positions[row.trader][row.ticker] = parseFloat(row.quantity);
+        });
+        
+        return positions;
+    } catch (error) {
+        console.error('Error fetching positions:', error);
+        return {
+            wiebe: {
+                'AMD': 133, 'GOOGL': 35, 'AMZN': 25, 'PLTR': 15,
+                'BOTZ': 350, 'IWDA': 25, 'AIAI': 175, 'CASH': 10749.07
+            },
+            claude: {
+                'AMD': 183, 'GOOGL': 35, 'AMZN': 25, 'PLTR': 15,
+                'BOTZ': 350, 'IWDA': 25, 'AIAI': 175, 'CASH': 0
+            }
+        };
+    }
+}
+
+// Get trades history from database
+async function fetchTrades() {
+    if (!supabase) {
+        return [{
+            trader: 'wiebe',
+            date: '2026-02-09',
+            time: '18:30:00',
+            action: 'SELL',
+            ticker: 'AMD',
+            quantity: 50,
+            price: 215.00,
+            commission: 0.93,
+            net_amount: 10749.07,
+            rationale: 'Limit order executed at $215. Derisking AMD from 52.5% → 39.4%. Built $10.7k cash buffer (14.8%).'
+        }];
+    }
+    
+    try {
+        const { data, error } = await supabase
+            .from('trades')
+            .select('*')
+            .order('date', { ascending: false })
+            .order('time', { ascending: false });
+        
+        if (error) throw error;
+        
+        return data.map(row => ({
+            trader: row.trader,
+            date: row.date,
+            time: row.time,
+            action: row.action,
+            ticker: row.ticker,
+            quantity: row.quantity,
+            price: parseFloat(row.price),
+            commission: parseFloat(row.commission),
+            net_amount: parseFloat(row.net_amount),
+            rationale: row.rationale
+        }));
+    } catch (error) {
+        console.error('Error fetching trades:', error);
+        return [{
+            trader: 'wiebe',
+            date: '2026-02-09',
+            time: '18:30:00',
+            action: 'SELL',
+            ticker: 'AMD',
+            quantity: 50,
+            price: 215.00,
+            commission: 0.93,
+            net_amount: 10749.07,
+            rationale: 'Limit order executed at $215. Derisking AMD from 52.5% → 39.4%. Built $10.7k cash buffer (14.8%).'
+        }];
+    }
+}
+
+// Load and display trades
+async function loadTrades() {
+    const trades = await fetchTrades();
     const tradeLog = document.getElementById('trade-log');
     tradeLog.innerHTML = '';
     
@@ -100,18 +209,23 @@ function loadTrades() {
 }
 
 // Update UI with latest data
-function updateUI() {
+async function updateUI() {
+    const [prices, positions] = await Promise.all([
+        fetchLatestPrices(),
+        fetchPositions()
+    ]);
+    
     // Calculate portfolio values
     let wiebeValue = 0;
     let claudeValue = 0;
     
     Object.entries(positions.wiebe).forEach(([ticker, qty]) => {
-        const price = ticker === 'CASH' ? 1 : (livePrices[ticker] || 0);
+        const price = ticker === 'CASH' ? 1 : (prices[ticker] || 0);
         wiebeValue += qty * price;
     });
     
     Object.entries(positions.claude).forEach(([ticker, qty]) => {
-        const price = ticker === 'CASH' ? 1 : (livePrices[ticker] || 0);
+        const price = ticker === 'CASH' ? 1 : (prices[ticker] || 0);
         claudeValue += qty * price;
     });
     
@@ -133,8 +247,13 @@ function updateUI() {
     document.getElementById('gap-leader').textContent = `${leader} ahead`;
     
     updateChart(wiebeValue, claudeValue);
-    updatePositions('wiebe', wiebeValue);
-    updatePositions('claude', claudeValue);
+    updatePositions('wiebe', wiebeValue, positions.wiebe, prices);
+    updatePositions('claude', claudeValue, positions.claude, prices);
+    
+    document.getElementById('last-update').textContent = new Date().toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
 }
 
 // Update chart
@@ -206,12 +325,12 @@ function updateChart(wiebeValue, claudeValue) {
 }
 
 // Update positions display
-function updatePositions(trader, totalValue) {
+function updatePositions(trader, totalValue, positions, prices) {
     const container = document.getElementById(`${trader}-positions`);
     container.innerHTML = '';
     
-    const positionsArray = Object.entries(positions[trader]).map(([ticker, qty]) => {
-        const price = ticker === 'CASH' ? 1 : (livePrices[ticker] || 0);
+    const positionsArray = Object.entries(positions).map(([ticker, qty]) => {
+        const price = ticker === 'CASH' ? 1 : (prices[ticker] || 0);
         const value = qty * price;
         return { ticker, qty, price, value };
     });
@@ -246,5 +365,28 @@ function formatCurrency(value) {
     });
 }
 
-// Start the app
-init();
+// Initialize app
+async function init() {
+    console.log('🚀 Initializing Trading Dashboard...');
+    
+    // Initialize Supabase
+    await initSupabase();
+    
+    // Load initial data
+    await Promise.all([
+        updateUI(),
+        loadTrades()
+    ]);
+    
+    // Auto-refresh every 60 seconds
+    setInterval(updateUI, 60000);
+    
+    console.log('✅ Dashboard ready!');
+}
+
+// Start the app when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
