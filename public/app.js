@@ -1,7 +1,7 @@
 // Trading Experiment Dashboard - Supabase Live Version (Fixed)
 // Updated: Feb 10, 2026 - Fixed CORS and library loading
 
-const SUPABASE_URL = 'https://yntahbkulwaqawvtdear.supabase.co';
+const SUPABASE_URL = 'https://yntahbxulwaqswwtdear.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InludGFoYmt1bHdhcWF3dnRkZWFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzkyMjM4ODUsImV4cCI6MjA1NDc5OTg4NX0.nMlUnKQGqzf8PmkVq_7U8A_E73-TcIbE8uNYxQ7UXMU';
 
 const START_VALUE = 62771.86;
